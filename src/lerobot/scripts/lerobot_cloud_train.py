@@ -160,7 +160,10 @@ def train(
 
 
 @app.command()
-def status(instance_id: str = typer.Option(..., help="EC2 instance ID")):
+def status(
+    instance_id: str = typer.Option(..., help="EC2 instance ID"),
+    profile: str = typer.Option("default", help="AWS SSO profile"),
+):
     """Check training status on instance."""
     try:
         from pathlib import Path
@@ -172,7 +175,7 @@ def status(instance_id: str = typer.Option(..., help="EC2 instance ID")):
         from lerobot.cloud.aws_client import AWSClient
         from lerobot.cloud.ec2_manager import EC2Manager
         
-        client = AWSClient(profile_name="default")
+        client = AWSClient(profile_name=profile)
         if not client.login():
             typer.echo("❌ Failed to login to AWS", err=True)
             raise typer.Exit(1)
@@ -221,5 +224,14 @@ def status(instance_id: str = typer.Option(..., help="EC2 instance ID")):
     except Exception as e:
         typer.echo(f"❌ Error: {e}", err=True)
         raise typer.Exit(1)
+
+
+def main():
+    """Main entry point."""
+    app()
+
+
+if __name__ == "__main__":
+    main()
 
 
