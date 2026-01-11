@@ -82,6 +82,7 @@ class TrainingRunner:
         steps: int = 100000,
         hf_token: Optional[str] = None,
         policy_repo_id: Optional[str] = None,
+        num_workers: int = 0,
     ) -> bool:
         """
         Run training on remote instance.
@@ -93,6 +94,7 @@ class TrainingRunner:
             steps: Number of training steps
             hf_token: Hugging Face API token
             policy_repo_id: Where to save trained model
+            num_workers: Number of DataLoader workers (default 0 to avoid multiprocessing issues with video decoding)
             
         Returns:
             True if successful
@@ -100,6 +102,9 @@ class TrainingRunner:
         logger.info(f"Starting training: {dataset_repo_id}")
         
         # Prepare training command arguments
+        # Note: pyav backend avoids torchcodec FFmpeg compatibility issues on EC2
+        # num_workers=0 avoids multiprocessing issues with video decoding
+        # use_amp=true enables mixed precision for better memory efficiency
         train_args = [
             f"--dataset.repo_id={dataset_repo_id}",
             f"--policy.type={policy_type}",
@@ -111,6 +116,8 @@ class TrainingRunner:
             "--wandb.enable=false",
             "--dataset.video_backend=pyav",
             "--policy.push_to_hub=false",
+            f"--num_workers={num_workers}",
+            "--policy.use_amp=true",
         ]
         
         if hf_token:

@@ -159,11 +159,11 @@ class SSHTunnel:
     
     def download_file(self, remote_path: str, local_path: str) -> bool:
         """
-        Download file from remote instance.
+        Download file or directory from remote instance.
         
         Args:
-            remote_path: Remote file path
-            local_path: Local file path
+            remote_path: Remote file or directory path
+            local_path: Local file or directory path
             
         Returns:
             True if successful
@@ -172,8 +172,43 @@ class SSHTunnel:
             raise RuntimeError("Not connected. Call connect() first.")
         
         try:
+            import os
+            import tarfile
+            import tempfile
+            
+            # Check if remote path is a directory
+            stdin, stdout, stderr = self.client.exec_command(f"[ -d {remote_path} ] && echo 'dir' || echo 'file'")
+            is_dir = stdout.read().decode().strip() == "dir"
+            
             logger.info(f"Downloading {remote_path} → {local_path}")
-            self.sftp.get(remote_path, local_path)
+            
+            if is_dir:
+                # For directories, use tar to compress and download
+                tar_name = os.path.basename(remote_path) + ".tar.gz"
+                stdin, stdout, stderr = self.client.exec_command(
+                    f"cd $(dirname {remote_path}) && tar -czf /tmp/{tar_name} $(basename {remote_path})"
+                )
+                stdout.read()
+                
+                # Download tar file
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz")
+                self.sftp.get(f"/tmp/{tar_name}", temp_file.name)
+                temp_file.close()
+                
+                # Extract to local path
+                os.makedirs(local_path, exist_ok=True)
+                with tarfile.open(temp_file.name, "r:gz") as tar:
+                    tar.extractall(local_path)
+                
+                os.remove(temp_file.name)
+                
+                # Clean up remote tar file
+                self.client.exec_command(f"rm /tmp/{tar_name}")
+                
+            else:
+                # For files, use regular SFTP get
+                self.sftp.get(remote_path, local_path)
+            
             logger.info("✓ Download complete")
             return True
         except Exception as e:
