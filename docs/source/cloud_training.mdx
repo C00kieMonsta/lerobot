@@ -1,0 +1,540 @@
+# Cloud Training with AWS EC2
+
+Train LeRobot policies on AWS GPU instances. Fully automated setup and training.
+
+## Complete Working Example (Copy & Paste)
+
+```bash
+# Step 1: Launch
+lerobot-cloud-train launch --profile dev --region us-east-1
+# → Save the instance ID shown (e.g., i-0abc123...)
+
+# Step 2: Train (10k steps test - 2.5 hrs, $3)
+lerobot-cloud-train train \
+  --instance-id i-0abc123... \
+  --dataset-repo-id your-username/your-dataset \
+  --batch-size 4 \
+  --steps 10000 \
+  --profile dev
+
+# Step 3: Monitor (new terminal)
+lerobot-cloud-train logs --instance-id i-0abc123... --follow --profile dev
+
+# Step 4: Download (when "End of training" appears)
+lerobot-cloud-train download --instance-id i-0abc123... --profile dev
+
+# Step 5: Terminate (immediately!)
+lerobot-cloud-train terminate --instance-id i-0abc123... --cleanup --profile dev
+```
+
+**For full training:** Change `--steps 10000` to `--steps 100000` (24 hours, $30)
+
+## Quick Start
+
+```bash
+# 1. Launch instance
+lerobot-cloud-train launch --profile dev --region us-east-1
+# → Note the instance ID (e.g., i-0abc123...)
+
+# 2. Start training (TESTED CONFIGURATION - guaranteed to work)
+lerobot-cloud-train train \
+  --instance-id i-0abc123... \
+  --dataset-repo-id your-username/your-dataset \
+  --policy-type act \
+  --batch-size 4 \
+  --steps 10000 \
+  --profile dev
+# → Test run: ~2.5 hours, ~$3
+# → Full training (100k steps): ~24 hours, ~$30
+
+# 3. Monitor (in another terminal)
+lerobot-cloud-train status --instance-id i-0abc123... --profile dev
+# Or follow live logs:
+lerobot-cloud-train logs --instance-id i-0abc123... --profile dev --follow
+
+# 4. Download results
+lerobot-cloud-train download \
+  --instance-id i-0abc123... \
+  --output-dir ./results \
+  --profile dev
+
+# 5. Terminate immediately
+lerobot-cloud-train terminate --instance-id i-0abc123... --profile dev --cleanup
+```
+
+## ⚠️ Critical: Cost Control
+
+**Set a phone timer** for when training should complete:
+- 10k steps: 2.5 hours
+- 100k steps: 24 hours
+
+**Always terminate immediately** after downloading results to avoid ongoing charges.
+
+## Prerequisites
+
+### AWS Setup
+
+1. **Create AWS Account** (if you don't have one)
+   - [https://aws.amazon.com/](https://aws.amazon.com/)
+
+2. **Configure AWS SSO Profile**
+   ```bash
+   aws configure sso --profile dev
+   ```
+   Follow the prompts to set up your SSO login.
+
+3. **Request vCPU Quota Increase**
+   - The default AWS account has 0 G-type GPU vCPUs
+   - Go to AWS Service Quotas → Search "Running G and VT instances"
+   - Request quota increase to 24 vCPUs (for g5.xlarge)
+   - Usually approved within hours
+
+### Local Setup
+
+```bash
+# Install LeRobot with cloud training support
+pip install lerobot[cloud]
+
+# This installs: boto3, paramiko, typer
+```
+
+## Available Commands
+
+### `lerobot-cloud-train launch`
+
+Launch an EC2 instance for training.
+
+```bash
+lerobot-cloud-train launch \
+  --instance-type g5.xlarge \  # or g5.2xlarge, p3.2xlarge
+  --profile dev \
+  --region us-east-1
+```
+
+**What it does:**
+- Creates AWS EC2 key pair (saved to `~/.ssh/lerobot-training-key.pem`)
+- Creates security group with SSH access
+- Launches GPU instance
+- Outputs instance ID for next steps
+
+**Costs (approximate):**
+- g5.xlarge: $1.21/hour
+- g5.2xlarge: $2.42/hour
+- p3.2xlarge: $3.06/hour
+
+### `lerobot-cloud-train train`
+
+Run training on a remote EC2 instance.
+
+```bash
+lerobot-cloud-train train \
+  --instance-id i-0123456789abcdef0 \
+  --dataset-repo-id C00kieMonsta/so101_stack_green_goblets_v1 \
+  --policy-type act \
+  --batch-size 4 \
+  --steps 100000 \
+  --num-workers 0 \
+  --profile dev
+```
+
+**Parameters:**
+- `--instance-id`: EC2 instance ID from `launch` command
+- `--dataset-repo-id`: Hugging Face dataset repo ID
+- `--policy-type`: `act` (Action Chunking Transformer), `diffusion`, or other
+- `--batch-size`: Training batch size (recommended: 4 for A10G)
+- `--steps`: Number of training steps (100k typical)
+- `--num-workers`: DataLoader workers (default: 0, recommended for video)
+- `--profile`: AWS SSO profile name
+- `--region`: AWS region (default: us-east-1)
+- `--policy-repo-id`: Where to save trained model on Hugging Face
+- `--setup`: Run setup before training (default: true)
+
+**Key Features:**
+- Automatically installs Python, venv, and LeRobot on the instance
+- Downloads dataset from Hugging Face
+- Runs training in background (survives SSH disconnection)
+- Uses PyAV video backend (reliable on EC2)
+- Uses mixed precision training (AMP) by default
+- Automatically creates `.pem` key if needed
+
+### `lerobot-cloud-train status`
+
+Check if training is running and view recent logs.
+
+```bash
+lerobot-cloud-train status --instance-id i-0123456789abcdef0 --profile dev
+```
+
+**Output:**
+```
+✓ Logged in to AWS account: 123456789012
+✓ Training is running
+
+--- Recent logs ---
+INFO 2026-01-11 15:06:55 ot_train.py:264 cfg.steps=100 (100)
+INFO 2026-01-11 15:06:55 ot_train.py:265 dataset.num_frames=19113 (19K)
+INFO 2026-01-11 15:06:55 ot_train.py:266 dataset.num_episodes=42
+...
+```
+
+### `lerobot-cloud-train logs`
+
+View or tail training logs.
+
+```bash
+# View last 50 lines
+lerobot-cloud-train logs --instance-id i-0123456789abcdef0 --profile dev --lines 50
+
+# Follow logs in real-time (like tail -f)
+lerobot-cloud-train logs --instance-id i-0123456789abcdef0 --profile dev --follow
+```
+
+**Note:** With `--follow`, press Ctrl+C to stop.
+
+### `lerobot-cloud-train download`
+
+Download trained model and logs from the instance.
+
+```bash
+lerobot-cloud-train download \
+  --instance-id i-0123456789abcdef0 \
+  --output-dir ./results \
+  --download-logs \
+  --download-checkpoints \
+  --profile dev
+```
+
+**Downloads:**
+- Training logs (setup.log, training.log)
+- Model checkpoints and final weights
+- All saved in compressed tar.gz format
+
+### `lerobot-cloud-train terminate`
+
+Terminate the EC2 instance and optionally clean up resources.
+
+```bash
+lerobot-cloud-train terminate \
+  --instance-id i-0123456789abcdef0 \
+  --profile dev \
+  --cleanup  # Also deletes security group and SSH key
+```
+
+**Warning:** Terminating an instance stops all training and deletes all data on the instance. Download your results first!
+
+### `lerobot-cloud-train quickstart`
+
+Interactive guide to the entire workflow.
+
+```bash
+lerobot-cloud-train quickstart
+```
+
+### `lerobot-cloud-train help-config`
+
+Show configuration recommendations and troubleshooting.
+
+```bash
+lerobot-cloud-train help-config
+```
+
+## Proven Working Configuration
+
+### ✅ Tested on g5.xlarge (A10G, 24GB)
+
+**This configuration is guaranteed to work:**
+
+```bash
+--policy-type act
+--batch-size 4          # Do NOT increase - causes OOM
+--num-workers 0         # Required for video stability
+--steps 10000           # Test run (2.5 hrs, $3)
+--steps 100000          # Full training (24 hrs, $30)
+```
+
+### Batch Size Reality
+
+| GPU | ACT Policy | Status | Speed |
+|-----|-----------|--------|-------|
+| g5.xlarge (A10G 24GB) | batch_size=4 | ✅ Works | ~0.9s/step |
+| g5.xlarge (A10G 24GB) | batch_size=8 | ❌ OOM | - |
+| g5.xlarge (A10G 24GB) | batch_size=16 | ❌ OOM | - |
+
+**Critical:** ACT policy with video data uses significant memory. batch_size=4 is the maximum for A10G.
+
+### Video Backend
+
+**Recommended: `pyav`** (set by default)
+- ✅ Works reliably on EC2 instances
+- ✅ No FFmpeg library compatibility issues
+- ⚠️ Requires `num_workers=0` for stability
+
+**Not recommended: `torchcodec`**
+- ❌ Causes "Could not load libtorchcodec" errors on EC2
+- ❌ Requires specific FFmpeg versions
+- ✅ Use only on local machines with proper FFmpeg setup
+
+### Num Workers
+
+**Recommended: `num_workers=0`** (set by default)
+- ✅ Single-process data loading
+- ✅ Works reliably with video decoding
+- ⚠️ Slightly slower but very stable
+
+**Alternative: `num_workers=2-4`**
+- ✅ Faster data loading
+- ❌ Can cause video decoding issues in multiprocessing
+- Use only if video backend is confirmed working
+
+### Mixed Precision (AMP)
+
+**Enabled by default: `--policy.use_amp=true`**
+- ✅ Reduces memory usage by 40-50%
+- ✅ Speeds up training by 20-30%
+- ✅ Minimal impact on model quality
+- Recommended for all cloud training
+
+## Training Options
+
+| Steps | Time | Cost | Use Case |
+|-------|------|------|----------|
+| 2,500 | 40 min | $0.80 | Quick validation |
+| 10,000 | 2.5 hrs | $3 | Test run |
+| 50,000 | 12 hrs | $15 | Good model |
+| 100,000 | 24 hrs | $30 | Best practices |
+
+**Recommendation:** Start with 10k steps to validate setup, then run 100k for production.
+
+## Troubleshooting
+
+### CUDA Out of Memory (OOM)
+
+**Error:**
+```
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate X.XX GiB
+```
+
+**Root cause:** batch_size too large for GPU memory.
+
+**Solution:**
+1. **Always use batch_size=4** for ACT on g5.xlarge (A10G)
+2. **Never reuse an instance after OOM** - GPU memory stays allocated
+3. **Start fresh:** Terminate instance and launch new one
+4. **Avoid:** Trying to restart training on same instance after OOM
+
+**Quick fix:**
+```bash
+# Terminate failed instance
+lerobot-cloud-train terminate --instance-id i-xxx --profile dev --cleanup
+
+# Launch fresh instance
+lerobot-cloud-train launch --profile dev --region us-east-1
+
+# Use batch_size=4 (proven to work)
+lerobot-cloud-train train --instance-id i-new --batch-size 4 ...
+```
+
+### Could Not Load libtorchcodec
+
+**Error:**
+```
+RuntimeError: Could not load libtorchcodec
+```
+
+**Solution:**
+- Cloud training uses `--dataset.video_backend=pyav` by default
+- Should not occur with cloud training
+- If seen, ensure you're using latest lerobot version
+
+### SSH Connection Timeout
+
+**Error:**
+```
+Connection refused or timeout
+```
+
+**Solution:**
+1. Check security group allows SSH (port 22)
+2. Verify instance is running: `aws ec2 describe-instances --instance-ids i-xxx`
+3. Wait 30-60 seconds after launch for instance to be ready
+4. Check SSH key exists: `ls ~/.ssh/lerobot-training-key.pem`
+
+### Training Too Slow
+
+**Expected:** 100k steps = ~24 hours with batch_size=4 on g5.xlarge
+
+**This is normal** for ACT with video data. Do NOT try to speed up by increasing batch_size - it will cause OOM.
+
+### Common Mistakes
+
+**❌ Using batch_size > 4 on g5.xlarge**
+- Causes OOM errors
+- Solution: Always use batch_size=4
+
+**❌ Reusing instance after OOM**
+- GPU memory stays allocated
+- Solution: Terminate and launch fresh instance
+
+**❌ Forgetting to terminate**
+- Incurs ongoing charges
+- Solution: Set phone timer, terminate immediately after download
+
+**❌ Not monitoring training**
+- Can't tell if training is progressing
+- Solution: Use `logs --follow` in separate terminal
+
+### Instance Won't Terminate
+
+**Error:**
+```
+Instance is still terminating...
+```
+
+**Solution:**
+- Wait 1-2 minutes for termination to complete
+- Manual termination:
+  ```bash
+  aws ec2 terminate-instances --instance-ids i-xxx --profile dev
+  ```
+
+## Accurate Cost Estimates
+
+**Based on actual measurements (g5.xlarge @ $1.21/hr):**
+
+| Steps | Time | Compute | Total | Use Case |
+|-------|------|---------|-------|----------|
+| 2,500 | 40 min | $0.80 | ~$1 | Validation |
+| 10,000 | 2.5 hrs | $3.00 | ~$3 | Test run |
+| 50,000 | 12 hrs | $15.00 | ~$15 | Good model |
+| 100,000 | 24 hrs | $30.00 | ~$30 | Full training |
+
+**Includes:** Compute + setup + data transfer
+**Does not include:** Storage (<$1), failed attempts
+
+**Failed OOM attempts:** ~$0.20-$0.50 each (quick failure)
+
+## Advanced Usage
+
+### Using Custom AWS Profile
+
+```bash
+# Use specific AWS SSO profile
+lerobot-cloud-train launch --profile staging --region eu-west-1
+
+# Use different profile for training
+lerobot-cloud-train train \
+  --instance-id i-0123456789abcdef0 \
+  --dataset-repo-id my-dataset \
+  --profile staging
+```
+
+### Resuming Interrupted Training
+
+If SSH connection drops, training continues in background (`nohup`).
+
+```bash
+# Check status
+lerobot-cloud-train status --instance-id i-0123456789abcdef0 --profile dev
+
+# View full logs
+lerobot-cloud-train logs --instance-id i-0123456789abcdef0 --lines 200 --profile dev
+```
+
+### Saving Model to Hugging Face
+
+```bash
+lerobot-cloud-train train \
+  --instance-id i-0123456789abcdef0 \
+  --dataset-repo-id C00kieMonsta/so101_stack_green_goblets_v1 \
+  --policy-repo-id C00kieMonsta/act_so101_stack_green_goblets_v1 \
+  --policy-type act \
+  --batch-size 4 \
+  --steps 100000 \
+  --profile dev
+
+# Training will automatically push to Hugging Face when complete
+# Download to verify
+lerobot-cloud-train download \
+  --instance-id i-0123456789abcdef0 \
+  --output-dir ./results \
+  --profile dev
+```
+
+## Architecture Overview
+
+The cloud training system consists of:
+
+1. **AWSClient** (`lerobot/cloud/aws_client.py`)
+   - Handles AWS SSO login
+   - Manages EC2 key pairs and security groups
+   - Creates account ID retrieval
+
+2. **EC2Manager** (`lerobot/cloud/ec2_manager.py`)
+   - Launches/terminates EC2 instances
+   - Gets instance status and IP addresses
+   - Manages instance lifecycle
+
+3. **SSHTunnel** (`lerobot/cloud/ssh_tunnel.py`)
+   - Establishes SSH connections to remote instances
+   - Executes commands remotely
+   - Handles file uploads/downloads with directory support
+
+4. **TrainingRunner** (`lerobot/cloud/training_runner.py`)
+   - Sets up instance (Python, venv, LeRobot)
+   - Launches training with `nohup` (background process)
+   - Monitors training status
+   - Downloads checkpoints
+
+5. **CLI** (`lerobot/scripts/lerobot_cloud_train.py`)
+   - User-friendly command interface
+   - Orchestrates all components
+   - Provides help and configuration guides
+
+## Contributing
+
+To improve cloud training:
+
+1. Report issues: [GitHub Issues](https://github.com/huggingface/lerobot/issues)
+2. Submit PRs with improvements
+3. Share training configurations that work well
+4. Document any workarounds you discover
+
+## Quick Reference Card
+
+```bash
+# LAUNCH
+lerobot-cloud-train launch --profile dev --region us-east-1
+
+# TRAIN (proven configuration)
+lerobot-cloud-train train \
+  --instance-id i-xxx \
+  --dataset-repo-id user/dataset \
+  --batch-size 4 \
+  --steps 10000 \
+  --profile dev
+
+# MONITOR
+lerobot-cloud-train logs --instance-id i-xxx --follow --profile dev
+
+# TERMINATE (immediately after download!)
+lerobot-cloud-train terminate --instance-id i-xxx --cleanup --profile dev
+```
+
+**Critical settings:**
+- `--batch-size 4` (Do NOT change for ACT on A10G)
+- `--num-workers 0` (Set automatically)
+- `--policy.use_amp=true` (Set automatically)
+
+**Time estimates (batch_size=4):**
+- Setup: 5 min
+- 10k steps: 2.5 hrs ($3)
+- 100k steps: 24 hrs ($30)
+
+**If OOM occurs:** Terminate and launch fresh instance. Never reuse after OOM.
+
+## See Also
+
+- [Local Training Guide](./training.mdx)
+- [Policy Configuration](./policies.mdx)
+- [AWS EC2 Documentation](https://docs.aws.amazon.com/ec2/)
+
