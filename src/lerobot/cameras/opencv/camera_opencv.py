@@ -171,6 +171,11 @@ class OpenCVCamera(Camera):
 
         self._configure_capture_settings()
 
+        # Give AVFoundation on macOS time to stabilize after setting properties
+        # Based on helper/calibrate-camera.py which uses 2 seconds
+        if platform.system() == "Darwin":  # macOS
+            time.sleep(3)
+
         if warmup:
             start_time = time.time()
             while time.time() - start_time < self.warmup_s:
