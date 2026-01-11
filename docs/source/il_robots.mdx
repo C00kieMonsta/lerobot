@@ -362,6 +362,23 @@ Control the data recording flow using keyboard shortcuts:
 - Press **Left Arrow (`←`)**: Cancel the current episode and re-record it.
 - Press **Escape (`ESC`)**: Immediately stop the session, encode videos, and upload the dataset.
 
+##### 5. Troubleshooting Recording Issues
+
+**Incorrect command line flag**: The command line argument to resume recording has changed in recent versions.
+- **Solution**: Use `--resume=true` instead of the older `--control.resume=true`.
+
+**Incorrect `num_episodes` setting**: When resuming a recording, you must specify the additional number of episodes you want to record, not the total number for the entire dataset.
+- **Solution**: Ensure `--dataset.num_episodes` is set to the count of new episodes for the current session.
+
+**Existing file conflicts (FileExistsError)**: Sometimes an error occurs if temporary or cache files from a previous session were not properly cleared.
+- **Solution**: Manually delete the dataset directory in your local cache (`~/.cache/huggingface/lerobot/{repo-id}`) to start a fresh recording, or identify and remove the specific conflicting file.
+
+**Permission Errors (Windows)**: Antivirus software or Windows' "Controlled folder access" can interfere with file writing, causing a `PermissionError`.
+- **Solution**: Ensure that your project folder and the Python executable are added to the exclusion list in your antivirus or Windows Defender settings.
+
+**Video concatenation fails**: Issues with video encoding (e.g., related to PyAV or ffmpeg time_base settings) can prevent the resumed recording from correctly merging with previous data.
+- **Solution**: Check your ffmpeg installation (`conda install ffmpeg` if necessary) and version. Ensure all input videos have the same codec, resolution, and frame rate.
+
 #### Tips for gathering data
 
 Once you're comfortable with data recording, you can create a larger dataset for training. A good starting task is grasping an object at different locations and placing it in a bin. We suggest recording at least 50 episodes, with 10 episodes per location. Keep the cameras fixed and maintain consistent grasping behavior throughout the recordings. Also make sure the object you are manipulating is visible on the camera's. A good rule of thumb is you should be able to do the task yourself by only looking at the camera images.
