@@ -86,6 +86,7 @@ class SSHTunnel:
         self,
         command: str,
         stream_output: bool = True,
+        timeout: int = 3600,
     ) -> Tuple[int, str, str]:
         """
         Execute command on remote instance.
@@ -93,6 +94,7 @@ class SSHTunnel:
         Args:
             command: Command to execute
             stream_output: If True, print output as it arrives
+            timeout: Timeout in seconds (default 1 hour for training)
             
         Returns:
             Tuple of (exit_code, stdout, stderr)
@@ -102,23 +104,28 @@ class SSHTunnel:
         
         logger.info(f"Executing: {command}")
         
-        stdin, stdout, stderr = self.client.exec_command(command, timeout=None)
+        # Set channel timeout for long operations
+        stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+        stdout.channel.settimeout(timeout)
         
         stdout_text = ""
         stderr_text = ""
         
         # Read output in real-time
-        for line in stdout:
-            line_str = line.rstrip('\n')
-            stdout_text += line + '\n'
-            if stream_output:
-                print(line_str)
-        
-        for line in stderr:
-            line_str = line.rstrip('\n')
-            stderr_text += line + '\n'
-            if stream_output:
-                print(f"[ERROR] {line_str}")
+        try:
+            for line in stdout:
+                line_str = line.rstrip('\n')
+                stdout_text += line + '\n'
+                if stream_output:
+                    print(line_str)
+            
+            for line in stderr:
+                line_str = line.rstrip('\n')
+                stderr_text += line + '\n'
+                if stream_output:
+                    print(f"[ERROR] {line_str}")
+        except Exception as e:
+            logger.warning(f"Error reading output: {e}")
         
         exit_code = stdout.channel.recv_exit_status()
         

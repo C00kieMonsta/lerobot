@@ -123,21 +123,30 @@ class TrainingRunner:
             train_args.append(f"--policy.repo_id={dataset_repo_id.rsplit('/', 1)[0]}/{policy_type}_{dataset_repo_id.split('/')[-1]}")
         
         # Build complete command with activation and training
+        # Use nohup to keep training running if SSH disconnects
         train_args_str = " ".join(train_args)
-        training_cmd = f"source ~/venv_lerobot/bin/activate && lerobot-train {train_args_str}"
+        training_cmd = f"nohup bash -c 'source ~/venv_lerobot/bin/activate && lerobot-train {train_args_str}' > ~/training.log 2>&1 &"
         
-        # Run training
-        logger.info("Running training (this may take hours)...")
+        # Run training in background
+        logger.info("Starting training in background (will continue even if SSH disconnects)...")
         exit_code, stdout, stderr = self.ssh.execute_command(
             training_cmd,
-            stream_output=True  # Stream logs in real-time
+            stream_output=False  # Don't stream nohup output
         )
         
         if exit_code == 0:
-            logger.info("✓ Training completed successfully")
+            logger.info("✓ Training started in background")
+            # Wait a moment for training to actually start
+            import time
+            time.sleep(5)
+            # Check if process is running
+            check_cmd = "ps aux | grep 'lerobot-train' | grep -v grep | wc -l"
+            exit_code, stdout, _ = self.ssh.execute_command(check_cmd, stream_output=False)
+            if "1" in stdout or "2" in stdout:
+                logger.info("✓ Training process confirmed running")
             return True
         else:
-            logger.error(f"Training failed with exit code {exit_code}")
+            logger.error(f"Failed to start training with exit code {exit_code}")
             return False
     
     def download_checkpoint(

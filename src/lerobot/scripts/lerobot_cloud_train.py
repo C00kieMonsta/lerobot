@@ -159,10 +159,67 @@ def train(
         raise typer.Exit(1)
 
 
-def main():
-    """Main entry point."""
-    app()
+@app.command()
+def status(instance_id: str = typer.Option(..., help="EC2 instance ID")):
+    """Check training status on instance."""
+    try:
+        from pathlib import Path
+        from lerobot.cloud.ssh_tunnel import SSHTunnel
+        
+        key_path = str(Path.home() / ".ssh" / "lerobot-training-key.pem")
+        
+        # Get instance IP
+        from lerobot.cloud.aws_client import AWSClient
+        from lerobot.cloud.ec2_manager import EC2Manager
+        
+        client = AWSClient(profile_name="default")
+        if not client.login():
+            typer.echo("❌ Failed to login to AWS", err=True)
+            raise typer.Exit(1)
+        
+        manager = EC2Manager(client)
+        ip_address = manager.get_instance_ip(instance_id)
+        
+        if not ip_address:
+            typer.echo(f"❌ Could not get IP for instance {instance_id}", err=True)
+            raise typer.Exit(1)
+        
+        # Connect and check
+        ssh = SSHTunnel(host=ip_address, username="ubuntu", key_path=key_path)
+        if not ssh.connect():
+            typer.echo("❌ Failed to connect via SSH", err=True)
+            raise typer.Exit(1)
+        
+        try:
+            # Check if training is running
+            exit_code, stdout, _ = ssh.execute_command(
+                "ps aux | grep 'lerobot-train' | grep -v grep",
+                stream_output=False
+            )
+            
+            if exit_code == 0 and stdout.strip():
+                typer.echo("✓ Training is running")
+                # Show recent log lines
+                exit_code, stdout, _ = ssh.execute_command(
+                    "tail -20 ~/training.log 2>/dev/null || echo 'No log yet'",
+                    stream_output=False
+                )
+                typer.echo("\n--- Recent logs ---")
+                typer.echo(stdout)
+            else:
+                typer.echo("⏸ Training is not running")
+                # Show last log
+                exit_code, stdout, _ = ssh.execute_command(
+                    "tail -20 ~/training.log 2>/dev/null || echo 'No log yet'",
+                    stream_output=False
+                )
+                typer.echo("\n--- Last logs ---")
+                typer.echo(stdout)
+        finally:
+            ssh.close()
+            
+    except Exception as e:
+        typer.echo(f"❌ Error: {e}", err=True)
+        raise typer.Exit(1)
 
 
-if __name__ == "__main__":
-    main()
