@@ -144,6 +144,9 @@ sarm = ["lerobot[transformers-dep]", "faker>=33.0.0,<35.0.0", "matplotlib>=3.10.
 xvla = ["lerobot[transformers-dep]"]
 hilserl = ["lerobot[transformers-dep]", "gym-hil>=0.1.13,<0.2.0", "lerobot[grpcio-dep]", "lerobot[placo-dep]"]
 
+# Cloud training
+cloud = ["boto3>=1.26.0,<1.35.0", "paramiko>=2.12.0,<4.0.0", "typer>=0.9.0,<1.0.0"]
+
 # Features
 async = ["lerobot[grpcio-dep]", "matplotlib>=3.10.3,<4.0.0"]
 peft = ["lerobot[transformers-dep]", "peft>=0.18.0,<1.0.0"]
@@ -202,6 +205,7 @@ lerobot-info="lerobot.scripts.lerobot_info:main"
 lerobot-find-joint-limits="lerobot.scripts.lerobot_find_joint_limits:main"
 lerobot-imgtransform-viz="lerobot.scripts.lerobot_imgtransform_viz:main"
 lerobot-edit-dataset="lerobot.scripts.lerobot_edit_dataset:main"
+lerobot-cloud-train="lerobot.scripts.lerobot_cloud_train:main"
 
 # ---------------- Tool Configurations ----------------
 [tool.setuptools.packages.find]
